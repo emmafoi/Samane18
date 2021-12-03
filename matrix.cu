@@ -67,6 +67,11 @@ void MatrixAdd(float *M1, float *M2, float *Mout, int n, int p){
 }
     
 
+void MatrixMult(float *M1, float *M2, float *Mout, int n){
+    
+    
+}
+
 
 int main(int argc, char *argv[]){
     
