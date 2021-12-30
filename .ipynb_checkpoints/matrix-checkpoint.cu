@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <time.h>
 
 //    n : nombre de lignes de la matrice,
 //    p : nombre de colonnes de la matrice si n différent de p,
@@ -32,12 +33,14 @@ void MatrixPrint(float *M, int n, int p){
              printf("%f ", M[i*p +j]);
              if(j==n-1){
                 printf("\n");
-         }
-      }
-   }
+             }
+          }
+       }
+    printf("\n");
 }
 
 
+/* Initialisation en matrice identité
 void MatrixInitfloat (float *M, int n, int p){
     int i,j;
     
@@ -50,6 +53,37 @@ void MatrixInitfloat (float *M, int n, int p){
             else{
                 M[i*p + j]=0;
             }   
+        }
+    }
+}
+*/
+
+// Initialisation M1 = [[1,2]     et   M2 = [[5,6] 
+//                      [3,4]]               [7,8]]
+
+/*
+int k=1;
+void MatrixInitfloat (float *M, int n, int p){
+    int i,j;
+
+    
+    for (i=0; i<n; i++){
+        for(j=0; j<p; j++){
+            M[i*p + j] = k;
+            k+=1;
+        }
+    }
+}
+*/
+
+void MatrixInitfloat (float *M, int n, int p){
+    int i,j;
+    float upper_bound = 2.0;  // we generate a random value in [0,2] and substract 1 to be in [-1,1] 
+    
+    for (i=0; i<n; i++){
+        for(j=0; j<p; j++){
+            
+            M[i*p + j] = ((float)rand()/(float)(RAND_MAX)) * upper_bound -1.0;
         }
     }
 }
@@ -67,6 +101,19 @@ void MatrixAdd(float *M1, float *M2, float *Mout, int n, int p){
 }
     
 
+void MatrixMult(float *M1, float *M2, float *Mout, int n, int p){
+    
+    int i,j;
+    for(i=0;i<n;i++){
+        for(j=0;j<p;j++){
+                Mout[i*p + j]=0;
+                for(int k=0;k<p;k++)
+                    Mout[i*p + j]+= M1[i*p + k]*M2[k*p + j];
+        }
+    }
+    
+}
+
 
 int main(int argc, char *argv[]){
     
@@ -74,22 +121,35 @@ int main(int argc, char *argv[]){
         printf("Usage: ./%s n p \n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    srand((unsigned int)time(NULL));
     
     int n = atoi(argv[1]);
     int p = atoi(argv[2]);
     
-    float* M1= (float*)malloc(sizeof(float) * n *p);
-    float* M2= (float*)malloc(sizeof(float) * n *p);
-    float* Mout= (float*)malloc(sizeof(float) * n *p);
+    float* M1= (float*)malloc(sizeof(float) * n * p);
+    float* M2= (float*)malloc(sizeof(float) * n * p);
+    float* MoutAdd= (float*)malloc(sizeof(float) * n * p);
+    float* MoutMult= (float*)malloc(sizeof(float) * n * p);
     
+    printf("Initialisation et affichage de M1 \n");
     MatrixInitfloat(M1, n, p);
     MatrixPrint(M1,n,p);
     
+    printf("Initialisation et affichage de M2 \n");
     MatrixInitfloat(M2, n, p);
     MatrixPrint(M2,n,p);
     
-    MatrixAdd(M1, M2, Mout, n, p);
-    MatrixPrint(Mout,n,p);
+    printf("Addition de M1 et M2 \n");
+    MatrixAdd(M1, M2, MoutAdd, n, p);
+    MatrixPrint(MoutAdd,n,p);
+    
+    printf("Multiplication de M1 et M2 \n");
+    MatrixMult(M1, M2, MoutMult, n, p);
+    MatrixPrint(MoutMult,n,p);
+    
+    
     return 0;
     
 }
+
+
