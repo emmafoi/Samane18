@@ -6,11 +6,16 @@
 #include <cuda_runtime.h>
 #include <time.h>
 
+#define MAX_ERR 1e-6
+
 //    n : nombre de lignes de la matrice,
 //    p : nombre de colonnes de la matrice si n différent de p,
 //    M : pointeur de la matrice
 
 // Sur CPU
+
+
+// ------------------------------------------------ Macros --------------------------------------------------------------------
 
 void MatrixInit(float *M, int n, int p); //Cette fonction initialise une matrice de taille n x p. Initialisez les valeurs de la matrice de façon aléatoire entre -1 et 1.
 void MatrixPrint(float *M, int n, int p); // Cette fonction affiche une matrice de taille n x p
@@ -23,6 +28,9 @@ __global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n, int p); 
 
 __global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n); //Cette fonction multiplie 2 matrices M1 et M2 de taillle n x n. Vous pouvez considérer les dimensions des matrices comme les paramètres gridDim et blockDim : les lignes correspondent aux blocks, les colonnes correspondent aux threads
 
+
+
+//---------------------------------------------- Fonctions ------------------------------------------------------------------
 void MatrixPrint(float *M, int n, int p){
     
     int i,j;
@@ -101,6 +109,7 @@ void MatrixAdd(float *M1, float *M2, float *Mout, int n, int p){
 }
     
 
+
 void MatrixMult(float *M1, float *M2, float *Mout, int n, int p){
     
     int i,j;
@@ -115,22 +124,44 @@ void MatrixMult(float *M1, float *M2, float *Mout, int n, int p){
 }
 
 
+
+//-------------------------------------------- main() --------------------------------------------------------------------- 
+
 int main(int argc, char *argv[]){
     
-    if (argc < 2) {
+    if (argc < 2) { // Si pas assez d'arguments en entrée
         printf("Usage: ./%s n p \n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    srand((unsigned int)time(NULL));
     
-    int n = atoi(argv[1]);
-    int p = atoi(argv[2]);
+    srand((unsigned int)time(NULL)); // Initialisation seed pour fonction random dans l'initilisation dans MatrixInit
     
-    float* M1= (float*)malloc(sizeof(float) * n * p);
+    int n = atoi(argv[1]);           // Nombre de lignes 
+    int p = atoi(argv[2]);           // Nombre de colonnes
+    
+    
+    //---------------------------- Déclaration des matrices ------------------------------------------------- 
+    
+    //Sur CPU
+    float* M1= (float*)malloc(sizeof(float) * n * p); 
     float* M2= (float*)malloc(sizeof(float) * n * p);
     float* MoutAdd= (float*)malloc(sizeof(float) * n * p);
     float* MoutMult= (float*)malloc(sizeof(float) * n * p);
     
+    //Sur GPU
+    float* d_M1; 
+    float* d_M2;
+    float* d_MoutAdd;
+    float* d_MoutMult;
+    
+    cudaMalloc((void**)&d_M1, sizeof(float)*n*p);
+    cudaMalloc((void**)&d_M2, sizeof(float)*n*p);
+    cudaMalloc((void**)&d_MoutAdd, sizeof(float)*n*p);
+    cudaMalloc((void**)&d_MoutMult, sizeof(float)*n*p);
+    
+    
+    
+    // ----------------------- Implémentation sur CPU -------------------------
     printf("Initialisation et affichage de M1 \n");
     MatrixInitfloat(M1, n, p);
     MatrixPrint(M1,n,p);
@@ -152,6 +183,8 @@ int main(int argc, char *argv[]){
     free(MoutAdd);
     free(MoutMult);
     
+    
+    // -----------------------Implémentation sur GPU------------------------------
     return 0;
     
 }
