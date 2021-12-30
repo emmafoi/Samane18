@@ -147,6 +147,10 @@ int main(int argc, char *argv[]){
     MatrixMult(M1, M2, MoutMult, n, p);
     MatrixPrint(MoutMult,n,p);
     
+    free(M1);
+    free(M2);
+    free(MoutAdd);
+    free(MoutMult);
     
     return 0;
     
