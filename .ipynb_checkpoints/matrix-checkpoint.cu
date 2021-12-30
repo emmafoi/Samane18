@@ -139,11 +139,11 @@ int main(int argc, char *argv[]){
     MatrixInitfloat(M2, n, p);
     MatrixPrint(M2,n,p);
     
-    printf("Addition de M1 et M2 \n");
+    printf("Addition de M1 et M2 sur CPU\n");
     MatrixAdd(M1, M2, MoutAdd, n, p);
     MatrixPrint(MoutAdd,n,p);
     
-    printf("Multiplication de M1 et M2 \n");
+    printf("Multiplication de M1 et M2 sur CPU\n");
     MatrixMult(M1, M2, MoutMult, n, p);
     MatrixPrint(MoutMult,n,p);
     
