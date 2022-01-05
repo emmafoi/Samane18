@@ -26,7 +26,7 @@ void MatrixMult(float *M1, float *M2, float *Mout, int n); //Cette fonction mult
 
 __global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n, int p); //Cette fonction additionne deux matrices M1 et M2 de même taille n x p. Vous pouvez considérer les dimensions des matrices comme les paramètres gridDim et blockDim : les lignes correspondent aux blocks, les colonnes correspondent aux threads
 
-__global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n); //Cette fonction multiplie 2 matrices M1 et M2 de taillle n x n. Vous pouvez considérer les dimensions des matrices comme les paramètres gridDim et blockDim : les lignes correspondent aux blocks, les colonnes correspondent aux threads
+__global__ void cudaMatrixMult(float *M1, float *M2, float *Mout, int n); //Cette fonction multiplie 2 matrices M1 et M2 de taillle n x n. Vous pouvez considérer les dimensions des matrices comme les paramètres gridDim et blockDim : les lignes correspondent aux blocks, les colonnes correspondent aux threads
 
 
 
@@ -124,6 +124,30 @@ void MatrixMult(float *M1, float *M2, float *Mout, int n, int p){
 }
 
 
+__global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n, int p) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y; 
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Handling arbitrary vector size
+    if (i < n && j < p) {
+        out[i*p + j] = a[i*p + j] + b[i*p + j];
+    }
+}
+
+__global__ void cudaMatrixMult(float *M1, float *M2, float *Mout, int n) {
+    
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    if (row < n && col < n) {
+      for (int i = 0; i < n; ++i) {
+          Mout[row * n + col] += M1[row * n + i] * M2[i * n + col];
+      }
+    }
+}
+    
+    
+  
 
 //-------------------------------------------- main() --------------------------------------------------------------------- 
 
@@ -146,7 +170,7 @@ int main(int argc, char *argv[]){
     float* M1= (float*)malloc(sizeof(float) * n * p); 
     float* M2= (float*)malloc(sizeof(float) * n * p);
     float* MoutAdd= (float*)malloc(sizeof(float) * n * p);
-    float* MoutMult= (float*)malloc(sizeof(float) * n * p);
+    float* MoutMult= (float*)malloc(sizeof(float) * n * n);
     
     //Sur GPU
     float* d_M1; 
@@ -157,8 +181,7 @@ int main(int argc, char *argv[]){
     cudaMalloc((void**)&d_M1, sizeof(float)*n*p);
     cudaMalloc((void**)&d_M2, sizeof(float)*n*p);
     cudaMalloc((void**)&d_MoutAdd, sizeof(float)*n*p);
-    cudaMalloc((void**)&d_MoutMult, sizeof(float)*n*p);
-    
+    cudaMalloc((void**)&d_MoutMult, sizeof(float)*n*n);
     
     
     // ----------------------- Implémentation sur CPU -------------------------
@@ -175,16 +198,49 @@ int main(int argc, char *argv[]){
     MatrixPrint(MoutAdd,n,p);
     
     printf("Multiplication de M1 et M2 sur CPU\n");
-    MatrixMult(M1, M2, MoutMult, n, p);
+    MatrixMult(M1, M2, MoutMult, n, n);
     MatrixPrint(MoutMult,n,p);
     
+   
+    
+    // -----------------------Implémentation sur GPU------------------------------
+    // Main function
+    
+    cudaMemcpy(d_M1, M1, sizeof(float) * n*p, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_M2, M2, sizeof(float) * n*p, cudaMemcpyHostToDevice);
+    
+    
+    int block_size = 5;
+    int grid_size = 7;
+    cudaMatrixAdd<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutAdd, n,p);
+    cudaMatrixMult<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutMult, n);
+    
+    cudaMemcpy(MoutAdd, d_MoutAdd, sizeof(float)*n*p, cudaMemcpyDeviceToHost);
+    cudaMemcpy(MoutMult, d_MoutMult, sizeof(float)*n*n, cudaMemcpyDeviceToHost);
+    
+    printf("Addition de M1 et M2 sur GPU\n");
+    MatrixAdd(M1, M2, MoutAdd, n, p);
+    MatrixPrint(MoutAdd,n,p);
+    
+    printf("Multiplication de M1 et M2 sur GPU\n");
+    MatrixMult(M1, M2, MoutMult, n, n);
+    MatrixPrint(MoutMult,n,p);
+     
+    
+    
+    // ------------------------- Free ----------------------------------------
     free(M1);
     free(M2);
     free(MoutAdd);
     free(MoutMult);
     
+    cudaFree(d_M1);
+    cudaFree(d_M2);
+    cudaFree(d_MoutAdd);
+    cudaFree(d_MoutMult);
     
-    // -----------------------Implémentation sur GPU------------------------------
+    cudaDeviceSynchronize();
+
     return 0;
     
 }
