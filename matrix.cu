@@ -130,7 +130,7 @@ __global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n, int p) {
     
     // Handling arbitrary vector size
     if (i < n && j < p) {
-        out[i*p + j] = a[i*p + j] + b[i*p + j];
+        Mout[i*p + j] = M1[i*p + j] + M2[i*p + j];
     }
 }
 
