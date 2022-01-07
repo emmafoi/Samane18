@@ -38,7 +38,8 @@ void MatrixPrint(float *M, int n, int p){
     printf("Two Dimensional array elements: \n");
        for(i=0; i<n; i++) {
           for(j=0;j<p;j++) {
-             printf("%f ", M[i*p +j]);
+              if(M[i*p +j]>0) printf(" ");
+             printf("%1.5f ", M[i*p +j]);
              if(j==n-1){
                 printf("\n");
              }
@@ -107,6 +108,19 @@ void MatrixAdd(float *M1, float *M2, float *Mout, int n, int p){
     }
     
 }
+
+
+void MatrixSub(float *M1, float *M2, float *Mout, int n, int p){
+    
+    int i,j;
+    
+    for (i=0; i<n; i++){
+        for(j=0; j<p; j++){
+            Mout[i*p + j]=M1[i*p + j]-M2[i*p + j];
+        }
+    }
+    
+}
     
 
 
@@ -153,6 +167,7 @@ __global__ void cudaMatrixMult(float *M1, float *M2, float *Mout, int n) {
 
 int main(int argc, char *argv[]){
     
+    
     if (argc < 2) { // Si pas assez d'arguments en entrée
         printf("Usage: ./%s n p \n", argv[0]);
         exit(EXIT_FAILURE);
@@ -170,6 +185,8 @@ int main(int argc, char *argv[]){
     float* M1= (float*)malloc(sizeof(float) * n * p); 
     float* M2= (float*)malloc(sizeof(float) * n * p);
     float* MoutAdd= (float*)malloc(sizeof(float) * n * p);
+    float* MoutAddGpu= (float*)malloc(sizeof(float) * n * p);
+    float* MDiff= (float*)malloc(sizeof(float) * n * p);
     float* MoutMult= (float*)malloc(sizeof(float) * n * n);
     
     //Sur GPU
@@ -215,18 +232,21 @@ int main(int argc, char *argv[]){
     cudaMatrixAdd<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutAdd, n,p);
     cudaMatrixMult<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutMult, n);
     
-    cudaMemcpy(MoutAdd, d_MoutAdd, sizeof(float)*n*p, cudaMemcpyDeviceToHost);
+    cudaMemcpy(MoutAddGpu, d_MoutAdd, sizeof(float)*n*p, cudaMemcpyDeviceToHost);
     cudaMemcpy(MoutMult, d_MoutMult, sizeof(float)*n*n, cudaMemcpyDeviceToHost);
     
     printf("Addition de M1 et M2 sur GPU\n");
-    MatrixAdd(M1, M2, MoutAdd, n, p);
-    MatrixPrint(MoutAdd,n,p);
+    MatrixAdd(M1, M2, MoutAddGpu, n, p);
+    MatrixPrint(MoutAddGpu,n,p);
     
     printf("Multiplication de M1 et M2 sur GPU\n");
     MatrixMult(M1, M2, MoutMult, n, n);
     MatrixPrint(MoutMult,n,p);
      
+    //--diff
     
+    MatrixSub(MoutAdd,MoutAddGpu,MDiff,n,n);
+    MatrixPrint(MDiff,n,n);
     
     // ------------------------- Free ----------------------------------------
     free(M1);
