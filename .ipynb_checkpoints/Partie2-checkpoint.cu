@@ -7,17 +7,17 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cstdlib>
-
+#define BLOCK_SIZE 32
 
 //------------------------------ Macros ---------------------------------------------------------------------
 
 void MatrixInitRand(float *M, int n);
 void MatrixInitZero(float *M, int n);
-void MatrixPrint(float *M, int n);
+void MatrixPrint(float *M, int n, int p);
 
-__global__ void cudaConv(float *In, float *Kernel, float *Out, int Nx, int Ny, int kernel_size);
+__global__ void cudaConv(float *In, float *Kernel, float *Out, int Nin, int Nout, int kernel_size);
 __global__ void cudaMoyen2(float *E, float *F, int n);
-
+__global__ void convolution_2d(float *matrix, float* kernel, float *result, int N, int k);
 // 3.1
 
 
@@ -37,29 +37,47 @@ void MatrixInitZero(float *M, int n){
     }
 }
 
+
 //nb_mat est le nombre de matrices
 //n c'est la taille de la matrice n*n
-void MatrixPrint(float *M, int n,int nb_mat){
-    for (int i = 0; i < n*n*nb_mat ; i++){
-        if((i+1)%n ==0){
-            printf("%1.5f\n",M[i]);
-            if((i+1)%n*n ==0){printf("\n");}
-        }else{
-            printf("%1.5f ",M[i]);
-        }
+//void MatrixPrint(float *M, int n,int nb_mat){
+//    printf("\n");
+//    for (int i = 0; i < n*n*nb_mat ; i++){
+//        if((i+1)%n ==0){
+//            printf("%1.5f\n",M[i]);
+//            if((i+1)%n*n ==0){printf("\n");}
+//        }else{
+//            printf("%1.5f ",M[i]);
+//        }
         
+//    }
+//}
+
+void MatrixPrint(float *M, int n, int p){
+    
+    int i,j;
+    
+    for(i=0; i<n; i++) {
+          for(j=0;j<p;j++) {
+              if(M[i*p +j]>0) printf(" ");
+             printf("%1.2f ", M[i*p +j]);
+             if(j==n-1){
+                printf("\n");
+             }
+          }
     }
     printf("\n");
 }
+
 
 // 3.2
 
 //--------------------------------- CudaConv et CudaMoyen2 -----------------------------------------------------------------------------
 
-__global__ void cudaConv(float *In, float *Kernel, float *Out, int Nx, int Ny, int kernel_size){
+__global__ void cudaConv(float *In, float *Kernel, float *Out, int Nin, int Nout, int kernel_size){
     
     
-    //Nx and Ny are the dimensions of both the original and convoluted image, and kernel_size is the dimension of the convolution kernel.
+    //Nin and Nout are the dimensions of both the original and convoluted image, and kernel_size is the dimension of the convolution kernel.
     
     //each block is assigned to a row of an image, iy integer index of y
     int iy = blockIdx.x + (kernel_size - 1)/2;
@@ -67,11 +85,11 @@ __global__ void cudaConv(float *In, float *Kernel, float *Out, int Nx, int Ny, i
     //each thread is assigned to a pixel of a row, ix integer index of x
     int ix = threadIdx.x + (kernel_size - 1)/2;
     
-    //center of kernel in both dimensions
-    int center = (kernel_size -1)/2;
+    //center of kernel in both dimensions, kernel_size impair  
+    int center = (kernel_size -1)/2;  // ici (5-1)/2 = 2
     
     //For each block thread, the memory location of the corresponding pixel can be calculated by:
-    int idx = iy*Nx +ix;
+    int idx = iy*Nin +ix;
     int ki;int ii;int jj;
     
  
@@ -83,19 +101,92 @@ __global__ void cudaConv(float *In, float *Kernel, float *Out, int Nx, int Ny, i
         __syncthreads();
     }
         
-    if (idx<Nx*Ny){
+    if (idx<Nin*Nout){
         int sum =0;
         for (ki = 0; ki<kernel_size; ki++){
             for (int kj = 0; kj<kernel_size; kj++){
                 ii = kj + ix - center;
                 jj = ki + iy - center;
-                sum+=In[jj*Nx+ii]*sdata[ki*kernel_size + kj];
+                sum+=In[jj*Nin+ii]*sdata[ki*kernel_size + kj];
             }
         }
         Out[idx] = sum;
     }
     
 }
+
+__global__ void cudaMatrixConv(float *M, float *K, float *Mout, int n, int k)
+{
+    int nbmatrix = gridDim.x;
+    int m = blockIdx.x;
+    int l = threadIdx.x;
+    int c = threadIdx.y;
+    int el = m*blockDim.x*blockDim.y + l*blockDim.y + c; //element d'indice (x,y)
+    
+    //printf("nbmatrix : %d \n",nbmatrix);
+    //printf("m : %d \n",m);
+    //printf("blockDim.x : %d \n",blockDim.x);
+    //printf("blockDim.y : %d \n",blockDim.y );
+    int center = k/2;
+    int originsize = blockDim.x+2*center;
+    //printf("originsize : %d \n",originsize );
+    // Handling arbitrary vector size
+    if (el < nbmatrix*n*n){
+        float sum = 0;
+        
+        for(int kc=0; kc<k; kc++){
+            for(int kl=0; kl<k; kl++){
+                int kel = m*k*k + kl*k + kc;
+                int Mel = (l + kl)*originsize + (c + kc);
+                sum = sum + M[Mel] * K[kel];
+            }
+        }
+        Mout[el] = sum;
+    }
+}
+
+// 2D Convolution Kernel
+// Takes:
+//  matrix: Input matrix
+//  result: Convolution result
+//  N:      Dimensions of the matrix
+//  k:      Dimensions of the kernel
+
+__global__ void convolution_2d(float *matrix, float* kernel, float *result, int N, int k) {
+    
+    // Calculate the global thread positions
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    int MASK_OFFSET = k/2; //Kernel size / 2
+
+    // Starting index for calculation
+    int start_r = row; 
+    int start_c = col;
+    
+    // Temp value for accumulating the result
+    float temp = 0;
+
+    // Iterate over all the rows
+    for (int i = 0; i < k; i++) {
+        // Go over each column
+        for (int j = 0; j < k; j++) {
+            // Range check for rows
+            if ((start_r + i) >= 0 && (start_r + i) < N) {
+                // Range check for columns
+                if ((start_c + j) >= 0 && (start_c + j) < N) {
+                    // Accumulate result
+                    temp += matrix[(start_r + i) * N + (start_c + j)] * kernel[i * k + j];
+                }
+            }
+        }
+    }
+
+    // Write back the result
+    result[row * N + col] = temp;
+    
+}
+
 
 __global__ void cudaMoyen2(float *E, float *S, int n){
     // n = taille d'une ligne de E (et aussi d'une colonne)
@@ -136,19 +227,19 @@ int main(){
     
     //matrice C1_data
     int n21 = 28; // size of output image of conv1
-    int n22 = 6; // nb of features maps in output of conv1
+    int n22 = 1; // nb of features maps in output of conv1
     const int ARRAY_SIZE2 = n21*n21*n22;
     const int ARRAY_BYTES2 = ARRAY_SIZE2 * sizeof(float);
     
     //matrice S1_data : issue du sous-échantillonnage de facteur 2 de C1_data
     int n31 = 14; //size of output image after S1
-    int n32 = 6; // nb of feature maps
+    int n32 = 1; // nb of feature maps
     const int ARRAY_SIZE3 = n31*n31*n32;
     const int ARRAY_BYTES3 = ARRAY_SIZE3* sizeof(float);
     
     //matrice C1_kernel : 6 noyaux de conv de taille 5x5
     int kernel_size = 5;
-    int nb_of_kernels = 6;
+    int nb_of_kernels = 1;
     const int ARRAY_SIZE4 = kernel_size*kernel_size*nb_of_kernels;
     const int ARRAY_BYTES4 = ARRAY_SIZE4 * sizeof(float);
     
@@ -168,7 +259,12 @@ int main(){
     MatrixInitRand(C1_kernel, ARRAY_SIZE4);
     
     // pour tester :
-    //MatrixPrint(C1_data, n21* n21* n22);
+    printf("\nMatrice de données M\n");
+    MatrixPrint(raw_data, n1,n1);
+    printf("\nKernel\n");
+    MatrixPrint(C1_kernel, kernel_size,kernel_size);   
+    printf("\nMatrice C1_data avant convolution\n");
+    MatrixPrint(C1_data, n21,n21);   
     
     
     // 3.2
@@ -192,11 +288,24 @@ int main(){
     
     
     // ------------------------------------------------Layer 2 : convolution ---------------------------------------------------------
-    dim3 my_blocks_conv (n21, n21, 1); // 1 psk dim3
-    cudaConv<<<my_blocks_conv, ARRAY_BYTES4>>>(d_raw_data,d_C1_kernel, d_C1_data, n1,n21,kernel_size);
+    //int max_threads = 1024;
+    //dim3 nbThreads (n1, n1, 1); // 1 psk dim3
+    //dim3 nbBlocks  (n1*n1/1024);
     
+    // Calculate grid dimensions
+    int THREADS = 32; //32*32=1024 threads max par bloc
+    int BLOCKS = (n1+THREADS-1) / THREADS; //= 512/32=16 => 16*16=256 blocs
+
+    // Dimension launch arguments
+    dim3 block_dim(THREADS,THREADS);
+    dim3 grid_dim(BLOCKS,BLOCKS);
+
+    // Perform 2D Convolution
+    convolution_2d<<<32,32>>>(d_raw_data,d_C1_kernel, d_C1_data, n21 ,kernel_size);
     cudaMemcpy(C1_data, d_C1_data, ARRAY_BYTES2, cudaMemcpyDeviceToHost);
-    MatrixPrint(C1_data,n21,1);
+    
+    printf("\nConvolution\n");
+    MatrixPrint(C1_data,28,28);
     
     // ----------------------------------------------- Layer 3 : moyenneur ---------------------------------------
     
@@ -205,7 +314,7 @@ int main(){
     cudaMoyen2<<< my_blocks, n31>>>(d_C1_data,d_S1_data, n31);
     //ici, n32 = blockId.x et n31 = blockId.y pour se repérer dans la fonction
     cudaMemcpy(S1_data, d_S1_data, ARRAY_BYTES3, cudaMemcpyDeviceToHost);
-    MatrixPrint(S1_data,n31,1);
+    //MatrixPrint(S1_data,n31,1);
     
     //---------------------------------------------------- Libération des ressources -------------------------------------- 
     cudaFree(d_raw_data);
@@ -223,3 +332,4 @@ int main(){
     
     return 0;
 }
+

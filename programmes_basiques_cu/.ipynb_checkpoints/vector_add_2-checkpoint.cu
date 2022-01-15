@@ -9,7 +9,7 @@
 #define MAX_ERR 1e-6
 
 __global__ void vector_add(float *out, float *a, float *b, int n) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x; //n° de bloc * nb de threads de l'axe x d'un bloc + n° de thread
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Handling arbitrary vector size
     if (tid < n){
@@ -17,8 +17,7 @@ __global__ void vector_add(float *out, float *a, float *b, int n) {
     }
 }
 
-int main(int argc, char *argv[]){
-
+int main(){
     float *a, *b, *out;
     float *d_a, *d_b, *d_out;
 
@@ -33,14 +32,16 @@ int main(int argc, char *argv[]){
         b[i] = 2.0f;
     }
 
-    x²x
+    cudaMalloc((void**)&d_a, sizeof(float)*N);
+    cudaMalloc((void**)&d_b, sizeof(float)*N);
+    cudaMalloc((void**)&d_out, sizeof(float)*N);
 
     cudaMemcpy(d_a, a, sizeof(float) * N, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b, sizeof(float) * N, cudaMemcpyHostToDevice);
 
     // Main function
-    int block_size = atoi(argv[2]);
-    int grid_size = atoi(argv[1]);
+    int block_size = 2000;
+    int grid_size = ((N + block_size)/block_size);
     vector_add<<<grid_size,block_size>>>(d_out, d_a, d_b, N);
 
     cudaMemcpy(out, d_out, sizeof(float)*N, cudaMemcpyDeviceToHost);

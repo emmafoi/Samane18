@@ -9,7 +9,7 @@
 #define MAX_ERR 1e-6
 
 __global__ void vector_add(float *out, float *a, float *b, int n) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x; //n° de bloc * nb de threads de l'axe x d'un bloc + n° de thread
 
     // Handling arbitrary vector size
     if (tid < n){
@@ -33,9 +33,7 @@ int main(int argc, char *argv[]){
         b[i] = 2.0f;
     }
 
-    cudaMalloc((void**)&d_a, sizeof(float)*N);
-    cudaMalloc((void**)&d_b, sizeof(float)*N);
-    cudaMalloc((void**)&d_out, sizeof(float)*N);
+    x²x
 
     cudaMemcpy(d_a, a, sizeof(float) * N, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b, sizeof(float) * N, cudaMemcpyHostToDevice);

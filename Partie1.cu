@@ -150,7 +150,7 @@ __global__ void cudaMatrixAdd(float *M1, float *M2, float *Mout, int n, int p) {
 
 __global__ void cudaMatrixMult(float *M1, float *M2, float *Mout, int n) {
     
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;  
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     
     if (row < n && col < n) {
@@ -227,7 +227,7 @@ int main(int argc, char *argv[]){
     cudaMemcpy(d_M2, M2, sizeof(float) * n*p, cudaMemcpyHostToDevice);
     
     
-    int block_size = 5;
+    int block_size = 3;
     int grid_size = 7;
     cudaMatrixAdd<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutAdd, n,p);
     cudaMatrixMult<<<grid_size,block_size>>>(d_M1, d_M2, d_MoutMult, n);
@@ -264,5 +264,3 @@ int main(int argc, char *argv[]){
     return 0;
     
 }
-
-
