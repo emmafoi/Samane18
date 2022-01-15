@@ -110,7 +110,7 @@ __global__ void cudaConv(float *In, float *Kernel, float *Out, int Nin, int Nout
                 sum+=In[jj*Nin+ii]*sdata[ki*kernel_size + kj];
             }
         }
-        Out[idx] = sum;
+        Out[idx] = sum;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
     }
     
 }
@@ -327,9 +327,7 @@ int main(){
     free(S1_data);
     free(C1_kernel);
     
-    // This call waits for all of the submitted GPU work to complete
-    cudaDeviceSynchronize();
-    
+    ghp_uAZouNeAn8ivmy4vqq1xGiGEBztjo71p1SK
     return 0;
 }
 
