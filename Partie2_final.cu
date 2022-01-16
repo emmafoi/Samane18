@@ -585,7 +585,7 @@ int main()
     
     // ------------------ Layer 3 : Sous-échantillonage 1 ----------------------
     
-    dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,3,1)
+    dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,14,1)
     
     /* Calcul de la matrice S1_data */
     cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
@@ -689,8 +689,6 @@ int main()
     
    
     // ------------------ Layer 2 : Sous-échantillonage 1 ----------------------
-    
-    dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,14,1)
     
     /* Calcul de la matrice S1_data_1 */
     cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data_1,d_S1_data_1, C1_data_size);
