@@ -644,10 +644,12 @@ int main()
     C1_data_Bytes=C1_data_size*C1_data_size*nb_of_maps*sizeof(float);
     
     //On prend deux matrices C1_data pour chacune des deux initialisations que l'on veut tester:
+    float *C1_data_1;
     C1_data_1=(float *)malloc(C1_data_Bytes);
     float *C1_data_2;
     C1_data_2=(float *)malloc(C1_data_Bytes);
 
+    float *d_C1_data_1;
     cudaMalloc((void **)&d_C1_data_1,C1_data_Bytes);
     float *d_C1_data_2;
     cudaMalloc((void **)&d_C1_data_2,C1_data_Bytes);
@@ -667,10 +669,12 @@ int main()
     S1_data_size=14;
     S1_data_Bytes=S1_data_size*S1_data_size*nb_of_maps*sizeof(float);
     
+    float *S1_data_1;
     S1_data_1=(float *)malloc(S1_data_Bytes);
     float *S1_data_2;
     S1_data_2=(float *)malloc(S1_data_Bytes);
 
+    float *d_S1_data_1;
     cudaMalloc((void **)&d_S1_data_1,S1_data_Bytes);
     float *d_S1_data_2;
     cudaMalloc((void **)&d_S1_data_2,S1_data_Bytes);
