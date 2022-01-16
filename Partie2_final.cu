@@ -53,7 +53,7 @@ void MatrixInitInt(float *M,int size)
 }
 
 
-/* MatrixInitOne : Initialise chaque valeur M[i] d'un tableau M par la valeur 1 */
+/* MatrixInitOne : Initialise chaque valeur M[i] d'un tableau de flottants M par la valeur 1 */
 void MatrixInitOne(float *M,int size)
 {
     for(int i=0;i<size;i++){
@@ -62,7 +62,7 @@ void MatrixInitOne(float *M,int size)
 }
 
 
-/* MatrixInitZero : Initialise chaque valeur M[i] d'un tableau M par la valeur 0 */
+/* MatrixInitZero : Initialise chaque valeur M[i] d'un tableau de flottants M par la valeur 0 */
 void MatrixInitZero(float *M,int size)
 {
     for(int i=0;i<size;i++){
@@ -83,6 +83,52 @@ void MatrixInitRand(float *M, int size){
         M[i] = (float)(rand()%1000)/1000 ; 
     }
 }
+
+/* MatrixInitZerosAndOnes : Initialise une matrice M de taille n avec une alternance de zéros et de uns
+*   La fonction fmod(x,y) donne le résultat de la division euclidienne de x par y.
+*   On s'en sert pour alterner les zéros et les uns : en ajoutant 1 et en faisant le résultat de la division
+*   euclidienne par 2, on obtient soit 0 si le chiffre précédent dans la matrice était 1, soit 1 si le
+*   chiffre précédent était 0.
+*   Pratique pour vérifier si le moyenneur marche bien : si c'est le cas, on obtient une matrice uniforme
+*   de 0.5.
+*/
+void MatrixInitZerosAndOnes(float *M, int n){
+    M[0]=1; //on intialise le premier chiffre de la matrice
+    for (int i = 1; i < n; i++){
+        M[i] = (float)fmod(M[i-1] + 1,2) ; 
+    }
+}
+
+
+/* MatrixInitDamier2x2 : Initialise une matrice M de taille n*n*nb_mat (3D) avec un damier de zéros 
+*   et de uns de sorte à former un damier 2x2, c'est-à-dire de 2 cases blanches ( de 1 ) et 2 cases
+*   noires ( de 0 ) qui sont en diagonale.
+*   Pratique pour voir l'effet du moyenneur ou d'une convolution.
+*/
+void MatrixInitDamier2x2(float *M, int n, int nb_mat){
+    int middle = n/2;
+    
+    //on commence par initialiser à zéro la matrice
+    for (int i = 0; i < n*n*nb_mat; i++){ //on parcourt toute la matrice
+        M[i] = 0 ; 
+    }
+    
+    //puis on met des 1 dans 2 cases (=ensemble de pixels) pour former le damier
+    for (int k = 0; k< nb_mat; k++){
+        for (int i = 0; i < middle; i++){
+            // i = row
+            for (int j = 0; j < middle; j++){
+                // j = column
+                // n*n*k = shift d'une matrice à l'autre
+                M[ i * n + j + n*n*k] = 1; // 1e case du damier
+                M[ (i + middle) * n + ( j + middle) + n*n*k] = 1 ; //2e case du damier : 
+                //on rajoute un shift à la ligne et à la colonne pour continuer dans la diagonale
+            }
+        }
+    
+    }
+}
+
 
 /* MatrixPrint : Affiche une matrice les nz sous-matrices d'une matrice M
 *
@@ -256,7 +302,7 @@ __global__ void gpuMatrix3DConv_sans_tanh(float* Entree, float* Kernel, float* S
 }
 
 
-/* cudaMoyen2: fonction moyenneur, executée sur GPU
+/* cudaMoyen2: fonction moyenneur sur un carré de 2x2 éléments, executée sur GPU
 *
 *    n : taille d'une ligne (et aussi d'une colonne) de la matrice d'entrée E (qui est carrée)
 *
@@ -432,14 +478,17 @@ int main()
     printf("\nSous-échantillonage\n");
     MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
 
-    // Libération des ressources 
+    // ---------------------- Libération des ressources------------------------- 
     cudaFree(d_raw_data);
     cudaFree(d_C1_kernel);
     cudaFree(d_C1_data);
+    cudaFree(d_S1_data);
     
     free(raw_data);
     free(C1_kernel);
     free(C1_data);
+    free(S1_data);
+    
     
     // This call waits for all of the submitted GPU work to complete
     cudaDeviceSynchronize();
@@ -447,7 +496,7 @@ int main()
     
 // --------------------------------------- 2ème démonstration ---------------------------------------------
     
-    /* Le 2ème test est réalisé selon les consignes du TP sur une matrice raw_data de taille 32*328 composée
+    /* Le 2ème test est réalisé selon les consignes du TP sur une matrice raw_data de taille 32*32 composée
     *  valeurs random entre 0 et 1, et une matrice C1_kernel composée de 6 kernels de taille 5*5, initialisés 
     *  également avec des valeurs entre 0 et 1.
     *  Après convolution, la matrice C1_data est composées de 6 matrices de taille 28*28, et le 
@@ -557,14 +606,118 @@ int main()
     printf("\nSous-échantillonage\n");
     MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
 
-    // Libération des ressources 
+    // ---------------------- Libération des ressources------------------------- 
     cudaFree(d_raw_data);
     cudaFree(d_C1_kernel);
     cudaFree(d_C1_data);
+    cudaFree(d_S1_data);
     
     free(raw_data);
     free(C1_kernel);
     free(C1_data);
+    free(S1_data);
+    
+    // This call waits for all of the submitted GPU work to complete
+    cudaDeviceSynchronize();
+    
+    
+    
+    
+    // --------------------------------------- 3ème démonstration ---------------------------------------------
+    
+    /* Ce troisième test se focalise sur le sous-échantillonnage avec le moyenneur 2x2. On initialise des  
+    *  matrices particulières qui nous permettrons d'apprécier de façon simple le moyennage effectué.
+    *  On utilisera pour cela les matrices suivantes : une matrice d'alternances de 1 et de 0, et une matrice
+    *  représentant un damier à 4 cases de 1 et de 0. La première matrice une fois moyennée devra sortir uniforme
+    *  et remplies d'éléments de valeur 0.5 tandis que la seconde devra présenter une bordure de valeurs à 0.5 
+    *  entre les cases de 1 et de 0. 
+    *  On initlisera des matrices à 3 dimensions pour respecter les tailles prérequises pour les matrices de ce TP.
+    */
+    
+    printf("\n\n\n************ Test 3 ************\n");
+    
+    
+    // ---------------------- Layer 1 : Initialisation -------------------------------
+    
+    /*Matrix C1_data_1 et C1_data_2 avec 6 feature maps de taille 6*6*/
+    C1_data_size=28,nb_of_maps=6;
+    C1_data_Bytes=C1_data_size*C1_data_size*nb_of_maps*sizeof(float);
+    
+    //On prend deux matrices C1_data pour chacune des deux initialisations que l'on veut tester:
+    C1_data_1=(float *)malloc(C1_data_Bytes);
+    float *C1_data_2;
+    C1_data_2=(float *)malloc(C1_data_Bytes);
+
+    cudaMalloc((void **)&d_C1_data_1,C1_data_Bytes);
+    float *d_C1_data_2;
+    cudaMalloc((void **)&d_C1_data_2,C1_data_Bytes);
+
+    MatrixInitZerosAndOnes(C1_data_1,C1_data_size*C1_data_size*nb_of_maps);
+    printf("\nMatrice C1_data_1 avec valeurs alternées entre 0 et 1\n");
+    MatrixPrint(C1_data_1,C1_data_size,C1_data_size,nb_of_maps);
+    
+    MatrixInitDamier2x2(C1_data_2,C1_data_size,nb_of_maps);
+    printf("\nMatrice C1_data_2 avec damier de 0 et 1\n");
+    MatrixPrint(C1_data_2,C1_data_size,C1_data_size,nb_of_maps);
+    
+    cudaMemcpy(d_C1_data_1,C1_data_1,C1_data_Bytes,cudaMemcpyHostToDevice);
+    cudaMemcpy(d_C1_data_2,C1_data_2,C1_data_Bytes,cudaMemcpyHostToDevice);
+    
+    /*Matrix S1_data_1 et S1_data_2 en sortie de cudaMoyen2*/
+    S1_data_size=14;
+    S1_data_Bytes=S1_data_size*S1_data_size*nb_of_maps*sizeof(float);
+    
+    S1_data_1=(float *)malloc(S1_data_Bytes);
+    float *S1_data_2;
+    S1_data_2=(float *)malloc(S1_data_Bytes);
+
+    cudaMalloc((void **)&d_S1_data_1,S1_data_Bytes);
+    float *d_S1_data_2;
+    cudaMalloc((void **)&d_S1_data_2,S1_data_Bytes);
+
+    MatrixInitZero(S1_data_1,S1_data_size*S1_data_size*nb_of_maps);
+    //MatrixPrint(S1_data_1,S1_data_size,S1_data_size,nb_of_maps);
+    MatrixInitZero(S1_data_2,S1_data_size*S1_data_size*nb_of_maps);
+    //MatrixPrint(S1_data_2,S1_data_size,S1_data_size,nb_of_maps);
+    
+    cudaMemcpy(d_S1_data_1,S1_data_1,S1_data_Bytes,cudaMemcpyHostToDevice);
+    cudaMemcpy(d_S1_data_2,S1_data_2,S1_data_Bytes,cudaMemcpyHostToDevice);
+    
+   
+    // ------------------ Layer 2 : Sous-échantillonage 1 ----------------------
+    
+    dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,14,1)
+    
+    /* Calcul de la matrice S1_data_1 */
+    cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data_1,d_S1_data_1, C1_data_size);
+    //on n'obtient que des 0.5 //
+    
+    /* Calcul de la matrice S1_data_2 */
+    cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data_2,d_S1_data_2, C1_data_size);
+    
+    // ----------------------Retour au CPU--------------------------------------
+    
+    // Récupération des données sur le CPU
+    cudaMemcpy(S1_data_1, d_S1_data_1, S1_data_Bytes, cudaMemcpyDeviceToHost); // S1_data_1
+    cudaMemcpy(S1_data_2, d_S1_data_2, S1_data_Bytes, cudaMemcpyDeviceToHost); // S1_data_2
+    
+    // Affichage de S1_data_1 
+    printf("\nSous-échantillonage de C1_data_1\n");
+    MatrixPrint(S1_data_1,S1_data_size,S1_data_size,nb_of_maps);
+    printf("\nSous-échantillonage de C1_data_2\n");
+    MatrixPrint(S1_data_2,S1_data_size,S1_data_size,nb_of_maps);
+
+    // ---------------------- Libération des ressources------------------------- 
+    cudaFree(d_C1_data_1);
+    cudaFree(d_S1_data_1);
+    cudaFree(d_C1_data_2);
+    cudaFree(d_S1_data_2);
+
+    free(C1_data_1);
+    free(S1_data_1);
+    free(C1_data_2);
+    free(S1_data_2);
+    
     
     // This call waits for all of the submitted GPU work to complete
     cudaDeviceSynchronize();
