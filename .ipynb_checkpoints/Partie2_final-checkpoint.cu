@@ -29,23 +29,21 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cstdlib>
+#include <time.h>
 #define BLOCK_SIZE 32
 
 
 // ------------------------------- Fonctions d'initialisation de matrices ----------------------------
 
 /* Ces premières fonctions nous aident à intialiser les matrices raw_data, C1_data, C1_kernel, et 
-*  S1_data. Chaque fonction prend en argument 
-*
+*  S1_data, et à les afficher avec MatrixPrint. Chaque fonction MatrixInit prend en argument un tableau 
+*  (matrice) M à initialiser et le nombre total d'éléments qu'elle contient, appelé "size".
+*  La fonction Matrix Print quant à elle prend une matrice M, et ses dimensions nx,ny,nz.
 */
 
-/*
- * Fonction: MatrixInitInt
- * ----------------------------
- *   Initialise chaque valeur M[i] d'un tableau M par la valeur i 
- *   M  : tableau à initialiser
- *   size : nombre total d'éléments dans M
- */
+
+
+/* MatrixInitInt : Initialise chaque valeur M[i] d'un tableau M par la valeur i */
 void MatrixInitInt(float *M,int size)
 {
     for(int i=0;i<size;i++){
@@ -53,14 +51,8 @@ void MatrixInitInt(float *M,int size)
     }
 }
 
-/*
- * Fonction: MatrixInitOne
- * ----------------------------
- *   Initialise chaque valeur M[i] d'un tableau M par la valeur 1
- *   M  : tableau à initialiser
- *   size : nombre total d'éléments dans M
- */
 
+/* MatrixInitOne : Initialise chaque valeur M[i] d'un tableau M par la valeur 1 */
 void MatrixInitOne(float *M,int size)
 {
     for(int i=0;i<size;i++){
@@ -68,14 +60,8 @@ void MatrixInitOne(float *M,int size)
     }
 }
 
-/*
- * Fonction: MatrixInitZero
- * ----------------------------
- *   Initialise chaque valeur M[i] d'un tableau M par la valeur 0 
- *   M  : tableau à initialiser
- *   size : nombre total d'éléments dans M
- */
 
+/* MatrixInitZero : Initialise chaque valeur M[i] d'un tableau M par la valeur 0 */
 void MatrixInitZero(float *M,int size)
 {
     for(int i=0;i<size;i++){
@@ -83,119 +69,175 @@ void MatrixInitZero(float *M,int size)
     }
 }
 
+/* MatrixInitRand : Initialise chaque valeur M[i] d'un tableau M par une valeur random entre 0 et 1
+*    L'élément M[i] prend la valeur ETC (A REMPLIR : expliquer la subitlité avec la fonction rand,, (float)
+*    et pourquoi on fait %1000 et /1000
+*/
 void MatrixInitRand(float *M, int size){
     for (int i = 0; i<size; i++){
+        // Flottant entre 0 et 1 de précision 10⁻3
         M[i] = (float)(rand()%1000)/1000 ; 
-        //flottant entre 0 et 1 de précision 10⁻3
     }
 }
 
-
-void MatrixPrint(float *C,const int nx,const int ny,const int nz)
+/* MatrixPrint : Affiche une matrice les nz sous-matrices d'une matrice M
+*
+*    nx : nombre de lignes d'une sous-matrice
+*    ny : nombre de colonnes d'une sous-matrice
+*    nz : nombre de sous-matrices
+*    
+*    Exemple : pour afficher chacun des 6 kernels de taille 5*5, on a nx=5,ny=5,nz=6 car il y a 6 kernels
+*    La fonction chacun des 6 kernels les uns en dessous des autres
+*    
+*    La fonction itère sur les nz sous-matrices l'affichage d'une sous-matrice, avec un saut de ligne à la fin de
+*    l'affichage d'une sous-matrice. On affiche à chaque fois 3 chiffes avant la virgule et 1 chiffre (%3.1f). Si
+*    Le nombre affiché est négatif, on affiche la valeur avec un espace après, si elle est positive, on ajoute un
+*    espace au début pour qu'il n'y ait pas de problème de décalage d'affichage avec des valeurs négatives.
+*/
+void MatrixPrint(float *M,const int nx,const int ny,const int nz)
 {
-    float *ic=C;
     printf("\n Matrix: (%d*%d*%d) \n",nx,ny,nz);
-    for(int k=0;k<nz;k++){
-        for(int i=0;i<ny;i++){
+    for(int k=0;k<nz;k++){                                
+        for(int i=0;i<ny;i++){                            
             for(int j=0;j<nx;j++){
-                if(ic[k*(nx*ny)+nx*i +j]<0){
-                    printf("%3.1f ",ic[k*(nx*ny)+nx*i +j]);                     
+                if(M[k*(nx*ny)+nx*i +j]<0){
+                    printf("%3.1f ",M[k*(nx*ny)+nx*i +j]);                     
                 }else{
-                    printf(" %3.1f ",ic[k*(nx*ny)+nx*i +j]);
+                    printf(" %3.1f ",M[k*(nx*ny)+nx*i +j]);
                 }
             }
-            printf("\n");
+            printf("\n");  // saut de ligne à la fin de l'affichage d'une sous-matrice
 
         }
         printf("\n");
     }
 }
 
-// Fonction qui sert à afficher l'indexage globale d'un thread sur une grille, pour mieux comprendre l'indexage 
-// A servi simplement de helper function
-__global__ void printthreadindex(float *A,const int nx,const int ny)
+/* printthreadindex : Fonction qui sert à afficher l'indexage global d'un thread sur une grille, pour mieux comprendre 
+*  l'indexage, a servi simplement de helper function pour comprendre l'indexage des valeurs des matrices. Sur matrice 
+*  2D seulement, (dimensions nx*ny).
+*/
+__global__ void printthreadindex(float *M,const int nx,const int ny)
 {
-    int ix=threadIdx.x+blockIdx.x*blockDim.x;
-    int iy=threadIdx.y+blockIdx.y*blockDim.y;
-    //int iz=threadIdx.z+blockIdx.z*blockDim.z;
-    
-    
-    unsigned int idx=ix+iy*nx; //+nx*ny*iz;
+    int ix=threadIdx.x+blockIdx.x*blockDim.x;  // ligne actuelle de la matrice M
+    int iy=threadIdx.y+blockIdx.y*blockDim.y;  // colonne actuelle de la matrice M
 
-    printf("thread_id (%d,%d) block_id (%d,%d) coordinate (%d,%d) global index %2d  ival %2d \n",threadIdx.x,threadIdx.y,blockIdx.x,blockIdx.y,ix,iy,idx,A[idx]);
+    unsigned int idx=ix+iy*nx; // index global de l'élément M(ix,iy) dans la grille
+
+    printf("thread_id (%d,%d) block_id (%d,%d) coordinate (%d,%d) global index %2d  ival %2d \n",threadIdx.x,threadIdx.y,blockIdx.x,blockIdx.y,ix,iy,idx,M[idx]);
 
 }
 
 
-// --------------------------------- Convolution, sous-échantillonnage, et fonction d'activation ------------------------------------
-
-// Fonction exécutée par le device (GPU) et appelée par le device (GPU).
-// Elle doit être appellée dans un kernel et ne nécessite d'appel <<<B,T>>> comme les fonctions __global__
-// On l'appelle à la fin de la fonction cudaMoyen2 
-__device__ float activation_tanh(float M){
-    return tanhf(M);
-}
+// --------------------------------- Convolution, sous-échantillonnage, et fonction d'activation ---------------------------
 
 
-// Fonction qui réaliser la convolution d'une matrice avec 1 SEUL kernel, donne en sortie 1 seul feature map
-__global__ void gpuMatrix2DConv(float* gpuMat1, float* kernel, float* gpuMat3, int m1Rows, int m1Cols, int mRowsCols, int m3Rows, int m3Cols)
+/* gpuMatrix2DConv : Fonction qui réaliser la convolution d'une matrice avec 1 SEUL kernel, et donne en sortie 1 seul feature map
+*    Entree : Matrice d'entrée
+*    Kernel : Matrice du kernel
+*    Sortie : Matrice de sortie de la convolution
+*    Ex : Nb de lignes de la matrice E
+*    Ey : Nb de colonnes de la matrice E
+*    kernel_size : Nb de lignes (ou de colonne comme un kernel est une matrice carrée ici) du kernel
+*    Sx : Nb de lignes de la matrice S
+*    Sy : Nb de colonnes de la matrice S 
+*
+*    Une fonction sur GPU étant exécutée sur UN thread, ici un thread correpond à un pixel de la matrice de Sortie, donc une convolution
+*    du kernel avec 1 bloc kernel_size*kernel_size de l'image Entrée
+*/
+
+__global__ void gpuMatrix2DConv(float* Entree, float* Kernel, float* Sortie, int Ex, int Ey, int kernel_size, int Sx, int Sy)
 {
+    //Identifiants globaux ligne (row) et colonne (col) de la matrice Sortie
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Somme qui qui donnera à la fin la valeur du pixel S(row,col)
     float sum = 0.0;
-
-    if (row < m3Rows && col < m3Cols) {
-        for (int maskRow = 0; maskRow < mRowsCols; maskRow++) {
-            for (int maskCol = 0; maskCol < mRowsCols; maskCol++) {
-                sum += gpuMat1[(row + maskRow) * m1Cols + (col + maskCol)] * kernel[maskRow * mRowsCols + maskCol];
+    
+    // si on est toujours à l'intérieur de la matrice E
+    if (row < Sx && col < Sy) { 
+        /* On itère sur les lignes et colonnes du kernel pour ajouter à sum la multiplication d'un pixel Kernel(i,j) avec le 
+        *  pixel S(i,j) du bloc de taille kernel_size_*kernel_size considéré
+        */
+        for (int maskRow = 0; maskRow < kernel_size; maskRow++) {
+            for (int maskCol = 0; maskCol < kernel_size; maskCol++) {
+                sum += Entree[(row + maskRow) * Ey + (col + maskCol)] * Kernel[maskRow * kernel_size + maskCol];
             }
         }
-        gpuMat3[row * m3Cols + col] = sum;
+        Sortie[row * Sy + col] = sum;
     }
 }
 
-// On part de la fonction de convolution 2D pour construire la convolution 3D : à chaque thread, on calcule la valeur du pixel (i,j) de CHAQUE feature map. Un thread réalise donc nb_features_maps (ici 6) convolutions avec un carré de l'image
-__global__ void gpuMatrix3DConv(float* gpuMat1, float* kernel, float* gpuMat3, int m1Rows, int m1Cols, int kernel_size, int nb_kernels, int m3Rows, int m3Cols){
+/* gpuMatrix3DConv : Fonction qui réalise la convolution d'une matrice avec nb_kernels kernels, et donne en sortie nb_kernels 
+*  feature maps dans la matrice de sortie. La matrice S sera de taille Sx*Sy*nb_kernels
+*
+*    Paramètres identiques à gpuMatrix2DConv, avec nb_kernels en plus : nombre de kernels avec lesquels on veut convoluer E 
+*
+*    On part de la fonction de convolution 2D pour construire la convolution 3D : à chaque thread, on calcule la valeur du pixel 
+*    (i,j) de CHAQUE feature map. Un thread réalise donc nb_kernels convolutions avec un carré kernel_size*kernel_size de l'image E
+*/
+
+__global__ void gpuMatrix3DConv(float* Entree, float* Kernel, float* Sortie, int Ex, int Ey, int kernel_size, int nb_kernels, int Sx, int Sy){
     
-    //Identifiants globaux ligne et colonne de la matrice gpuMat1
+    //Identifiants globaux ligne (row) et colonne (col) du thread actuel
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     
-    if (row < m3Rows && col < m3Cols) {
+    if (row < Sx && col < Sy) {
         
-        // On itère l'opération de convolution d'un carré kernel_size*kernel_size de la matrice d'entrée sur chacun des nb_kernels kernels 
+        // On itère l'opération de convolution d'un carré kernel_size*kernel_size de la matrice d'entrée E sur chacun des nb_kernels kernels 
         for(int num_kernel = 0; num_kernel<nb_kernels; num_kernel++){
-            // L'offset ici correpond au numéro de kernel dans avec lequel on fait une opération
+            
+            // L'offset ici correpond au numéro de kernel de la matrice Kernel avec lequel on fait une opération de convolution sur E
             int offset = num_kernel*kernel_size*kernel_size;
-            //On initialise la somme qui donnera la valeur final du pixel (row,col) de la matrice C1_data
+            
+            //On initialise la somme qui donnera la valeur finale du pixel (row,col) du feature map n° num_kernel de la matrice Sortie
             float sum = 0.0;
+            
             for (int maskRow = 0; maskRow < kernel_size; maskRow++) {
                 for (int maskCol = 0; maskCol < kernel_size; maskCol++) {
-                    sum += gpuMat1[(row + maskRow) * m1Cols + (col + maskCol) ] * kernel[maskRow * kernel_size + maskCol + offset];
+                    sum += Entree[(row + maskRow) * Ey + (col + maskCol) ] * Kernel[maskRow * kernel_size + maskCol + offset];
                 }
             }
-            gpuMat3[num_kernel*(m3Rows*m3Cols) + row * m3Cols + col] = sum;
+            Sortie[num_kernel*(Sx*Sy) + row * Sy + col] = sum;
         
         }
     }
     
 }
 
-/* fonction moyenneur executée sur GPU 
-L'argument de la fonction correspond à la dimension de la matrice d'entrée
-Les nombres de blocks et threads sont ceux de la matrice d'arrivés car le nombre de calculs corespond au nombre d'éléments à l'arrivée
-n : taille de la matrice d'entrée
+/* activation_tanh : Fonction qui applique la fonction tanh à une valeur m 
+*    C'est une fonction déclarée __device__ qui est exécutée par le device (GPU) et appelée par le device (GPU).
+*    Elle doit être appellée dans un kernel et ne nécessite d'appel <<<B,T>>> comme les fonctions __global__
+*    On l'appelle à la fin de la fonction cudaMoyen2 
 */
-__global__ void cudaMoyen2(float *E, float *S, int n){
-    // n = taille d'une ligne de E (et aussi d'une colonne)
+
+__device__ float activation_tanh(float m){
+    return tanhf(m);
+}
+
+
+/* cudaMoyen2_sans_tanh : fonction moyenneur sans utilisation de la fonction tanh, executée sur GPU
+*
+*    n : taille d'une ligne (et aussi d'une colonne) de la matrice d'entrée E (qui est carrée)
+*
+*    L'argument de la fonction correspond à la dimension de la matrice d'entrée
+*    Les nombres de blocks et threads sont ceux de la matrice d'arrivés car le nombre de calculs corespond au nombre 
+*    d'éléments à l'arrivée
+*/
+
+__global__ void cudaMoyen2_sans_tanh(float *E, float *S, int n){
     
-    int n_out = n/2; // dimension de la matrice de sortie
+    // n_out : dimension de la matrice de sortie
+    int n_out = n/2; 
     
     //1er élément du 1er dim3 = nombre matrices 2D de E
     int nb_mat = blockIdx.x;
     
     //nb_mat * taille d'une matrice de S (= taille du shift dans l'indice de S):
     int shift_S = nb_mat * n_out * n_out ;
+    
     //nb_mat * taille d'une matrice de E (= taille du shift dans l'indice de E):
     int shift_E = nb_mat * n * n ;
     
@@ -210,31 +252,105 @@ __global__ void cudaMoyen2(float *E, float *S, int n){
     int input_row = 2 * output_row;
     
     //Calcul pour chaque élément de S la moyenne en fonction des éléments de E :
-    S[shift_S + output_row * n_out + output_col] = (float)(( E[shift_E + input_row * n + input_col] + E[shift_E + (input_row+1) * n + input_col] + E[shift_E + input_row * n + (input_col+1)] + E[shift_E + (input_row+1) * n + (input_col+1)] )/4);
+    S[shift_S + output_row * n_out + output_col] = (float)(( E[shift_E + input_row * n + input_col] 
+    + E[shift_E + (input_row+1) * n + input_col] + E[shift_E + input_row * n + (input_col+1)] + 
+    E[shift_E + (input_row+1) * n + (input_col+1)] )/4);
     
 }
 
+/* cudaMoyen2 : fonction moyenneur sans utilisation de la fonction tanh, executée sur GPU
+*
+*    n : taille d'une ligne (et aussi d'une colonne) de la matrice d'entrée E (qui est carrée)
+*
+*    L'argument de la fonction correspond à la dimension de la matrice d'entrée
+*    Les nombres de blocks et threads sont ceux de la matrice d'arrivés car le nombre de calculs corespond au nombre 
+*    d'éléments à l'arrivée
+*/
+
+__global__ void cudaMoyen2(float *E, float *S, int n){
+    
+    // n_out : dimension de la matrice de sortie
+    int n_out = n/2; 
+    
+    //1er élément du 1er dim3 = nombre matrices 2D de E
+    int nb_mat = blockIdx.x;
+    
+    //nb_mat * taille d'une matrice de S (= taille du shift dans l'indice de S):
+    int shift_S = nb_mat * n_out * n_out ;
+    
+    //nb_mat * taille d'une matrice de E (= taille du shift dans l'indice de E):
+    int shift_E = nb_mat * n * n ;
+    
+    //2e élément du 1er dim3 = nombre de colonnes/2 de E = nombre de col de S
+    int output_col = blockIdx.y; 
+    
+    //2e dim3 (contient 1 seul élément) = nombre de lignes/2 de E =  nombre de lignes de S
+    int output_row = threadIdx.x;
+    
+    //on se déplace de 2 en 2 dans les matrices d'entrée
+    int input_col = 2 * output_col;
+    int input_row = 2 * output_row;
+    
+    //Calcul pour chaque élément de S la moyenne en fonction des éléments de E :
+    S[shift_S + output_row * n_out + output_col] = activation_tanh((float)(( E[shift_E + input_row * n + input_col] 
+    + E[shift_E + (input_row+1) * n + input_col] + E[shift_E + input_row * n + (input_col+1)] + 
+    E[shift_E + (input_row+1) * n + (input_col+1)] )/4));
+    
+}
+
+// ********************************************* Main ***************************************************** 
+
+/* Le main est la fonction principale dans laquelle nous effectuons les différentes opérations sur les
+*  matrices. Nous effectuons plusieurs tests pour montrer le bon fonctionnement de nos fonctions.
+* 
+*/
 
 
 int main()
 {
-    //Matrix raw_data
+
+// --------------------------------------- 1ère démonstration ---------------------------------------------
+    
+    /* Le premier test est réalisé sur une matrice raw_data de taille 8*8 composées uniquement de 1, et une 
+    *  matrice C1_kernel composée de 6 kernels de taille 3*3, initialisés avec la matrice MatrixIntInit.
+    *  Après convolution, la matrice C1_data est composées de 6 matrices de taille 6*6 (6 = 8-3+1), et un pixel
+    *  du feature map n°k contient la somme des kernel(i,j) du kernel n°k. Par exemple, le premier kernel a ses 
+    *  valeurs incrémentées de 0 à 8, et bien le premier feature map de C1_data a des 0+1+2+3+4+5+6+7+8=36 partout.
+    *  Le sous-échantillonnage sans tanh donne ensuite une matrice S1_data de 6 matrices de taille 3*3 qui,
+    *  comme les valeurs d'un feature map sont les mêmes partout, donnent des matrices de taille 3*3 avec les mêmes
+    *  valeurs que dans leur feature map respectif (par exemple pour le feature map 1, on a à chaque pixel (36+36+36
+    *  +36)/4 = 36 => la valeur ne change pas, le feature map sera ses dimensions divisées par 2. Avec le tanh, les
+    *  valeurs du feature map sont compressées entre 0 et 1, et comme les valeurs dans les features maps sous_échanti-
+    *  llonnées sont très grandes, les valeurs de S1_data seront toutes à 1.
+    */
+    
+    printf("\n************ Test 1 ************\n");
+    
+    
+    // ---------------------- Layer 1 : Initialisation -------------------------------
+    
+    /* Matrix raw_data de taille 8*8 avec que des 1*/
     int raw_size=8;
     float rawBytes=raw_size*raw_size*sizeof(float);
-
+    
+    // Allocation de mémoire pour les matrices sur CPU
     float *raw_data;
     raw_data=(float *)malloc(rawBytes);
-
+    
+    // Initialisation et printf
     MatrixInitOne(raw_data,raw_size*raw_size);
+    printf("\nMatrice raw_data à 1\n");
     MatrixPrint(raw_data,raw_size,raw_size,1);
     
+    // Allocation de mémoire sur GPU
     float *d_raw_data;
     cudaMalloc((void **)&d_raw_data,rawBytes);
-
+    
+    // Envoi de la matrice sur le device pour calculs sur GPU
     cudaMemcpy(d_raw_data,raw_data,rawBytes,cudaMemcpyHostToDevice);
     
     
-    //Matrix C1_Kernel
+    /*Matrix C1_Kernel de 6 kernels de taille 3*3*/ 
     int C1_kernel_size=3,nb_kernels=6;
     float C1_kernelBytes=C1_kernel_size*C1_kernel_size*nb_kernels*sizeof(float);
     
@@ -242,6 +358,7 @@ int main()
     C1_kernel=(float *)malloc(C1_kernelBytes);
     
     MatrixInitInt(C1_kernel,C1_kernel_size*C1_kernel_size*nb_kernels);
+    printf("\nMatrice C1_kernel initialisée avec des int\n");
     MatrixPrint(C1_kernel,C1_kernel_size,C1_kernel_size,nb_kernels);
     
     float *d_C1_kernel;
@@ -250,7 +367,7 @@ int main()
     cudaMemcpy(d_C1_kernel,C1_kernel,C1_kernelBytes,cudaMemcpyHostToDevice);
     
     
-    //Matrix C1_data output of convolution 1
+    /*Matrix C1_data en sortie de gpuMatrix3DConv, avec 6 feature maps de taille 6*6*/
     int C1_data_size=6,nb_of_maps=6;
     float C1_data_Bytes=C1_data_size*C1_data_size*nb_of_maps*sizeof(float);
     
@@ -261,11 +378,11 @@ int main()
     cudaMalloc((void **)&d_C1_data,C1_data_Bytes);
 
     MatrixInitZero(C1_data,C1_data_size*C1_data_size*nb_of_maps);
-    MatrixPrint(C1_data,C1_data_size,C1_data_size,nb_of_maps);
+    //MatrixPrint(C1_data,C1_data_size,C1_data_size,nb_of_maps);
     
     cudaMemcpy(d_C1_data,C1_data,C1_data_Bytes,cudaMemcpyHostToDevice);
     
-    //Matrix S1_data output of ss-ech 1
+    /*Matrix S1_data en sortie de cudaMoyen2*/
     int S1_data_size=3;
     float S1_data_Bytes=S1_data_size*S1_data_size*nb_of_maps*sizeof(float);
     
@@ -276,39 +393,41 @@ int main()
     cudaMalloc((void **)&d_S1_data,S1_data_Bytes);
 
     MatrixInitZero(S1_data,S1_data_size*S1_data_size*nb_of_maps);
-    MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
+    //MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
     
     cudaMemcpy(d_S1_data,S1_data,S1_data_Bytes,cudaMemcpyHostToDevice);
-    
-    // Process
-    //dim3 block(raw_size);//,3);
-    //dim3 grid(raw_size);
-    //printthreadindex <<<grid,block>>> (d_MatA,nx,ny);//,1);
-    
-    //printthreadindex <<<grid,block>>> (d_raw_data,raw_size,raw_size);//,1);
 
     
-    // --------------- Convolution 1 -----------------------------
-    int threadsPerBlock = 32;
-    int gridCols = ceil(double(C1_data_size) / double(threadsPerBlock));
+    // -------------------- Layer 2 : Convolution 1 ----------------------------
+    
+    /* On a maximum 32*32 threads par bloc, et on a besoin de C1_data_size*C1_data_size/1024 blocs*/
+    int threadsPerBlock = 32; 
+    int gridCols = ceil(double(C1_data_size) / double(threadsPerBlock)); 
     int gridRows = ceil(double(C1_data_size) / double(threadsPerBlock));
 
     dim3 gridDim(gridCols, gridRows);
-    dim3 blockDim(threadsPerBlock, threadsPerBlock);	// total 32x32=1024 threads
+    dim3 blockDim(threadsPerBlock, threadsPerBlock);    // total 32x32=1024 threads
     //gpuMatrix2DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size, C1_data_size, C1_data_size);
     gpuMatrix3DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size,nb_kernels, C1_data_size, C1_data_size);
     
-    // ------------------ Sous-échantillonage 1 ------------------------------
-    dim3 my_blocks (nb_of_maps, S1_data_size, 1);
-    cudaMoyen2<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    // ------------------ Layer 3 : Sous-échantillonage 1 ----------------------
+    
+    dim3 my_blocks (nb_of_maps, S1_data_size, 1); // = (6,3,1)
+    
+    /* Calcul de la matrice S1_data sans tanh. Pour l'avoir avec tanh, 
+    *  décommenter la ligne du dessous avec cudaMoyen2.
+    */
+    cudaMoyen2_sans_tanh<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    //cudaMoyen2<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
     
     
+    // ----------------------Retour au CPU--------------------------------------
     
-    // Retour au CPU
+    // Récupération des données sur le CPU
     cudaMemcpy(C1_data, d_C1_data, C1_data_Bytes, cudaMemcpyDeviceToHost); // C1_data
-    cudaMemcpy(S1_data, d_S1_data, S1_data_Bytes, cudaMemcpyDeviceToHost); // C1_data
+    cudaMemcpy(S1_data, d_S1_data, S1_data_Bytes, cudaMemcpyDeviceToHost); // S1_data
     
-    // Affichage Conv et Sous-échantillonage 
+    // Affichage de C1_data et S1_data 
     printf("\nConvolution\n");
     MatrixPrint(C1_data,C1_data_size,C1_data_size,nb_of_maps);
 
@@ -326,6 +445,137 @@ int main()
     
     // This call waits for all of the submitted GPU work to complete
     cudaDeviceSynchronize();
+    
+    
+// --------------------------------------- 2ème démonstration ---------------------------------------------
+    
+    /* Le 2ème test est réalisé selon les consignes du TP sur une matrice raw_data de taille 32*328 composée
+    *  valeurs random entre 0 et 1, et une matrice C1_kernel composée de 6 kernels de taille 5*5, initialisés 
+    *  également avec des valeurs entre 0 et 1.
+    *  Après convolution, la matrice C1_data est composées de 6 matrices de taille 28*28, et le 
+    *  sous-échantillonnage avec tanh donne ensuite une matrice S1_data de 6 matrices de taille 14*14 qui ont des
+    *  valeurs entre 0 et 1 à cause du tanh.
+    */
+    
+     printf("\n\n\n************ Test 2 ************\n");
+    
+    
+    // ---------------------- Layer 1 : Initialisation -------------------------------
+    
+    /* Matrix raw_data de taille 32*32 avec que des valeurs random*/
+    raw_size=32;
+    rawBytes=raw_size*raw_size*sizeof(float);
+    
+    // Allocation de mémoire pour les matrices sur CPU
+    raw_data=(float *)malloc(rawBytes);
+    
+    // Initialisation et printf
+    MatrixInitRand(raw_data,raw_size*raw_size);
+    printf("\nMatrice raw_data avec valeurs randoms entre 0 et 1\n");
+    MatrixPrint(raw_data,raw_size,raw_size,1);
+    
+    // Allocation de mémoire sur GPU
+    cudaMalloc((void **)&d_raw_data,rawBytes);
+    
+    // Envoi de la matrice sur le device pour calculs sur GPU
+    cudaMemcpy(d_raw_data,raw_data,rawBytes,cudaMemcpyHostToDevice);
+    
+    
+    /*Matrix C1_Kernel de 6 kernels de taille 5*5 */ 
+    C1_kernel_size=5,nb_kernels=6;
+    C1_kernelBytes=C1_kernel_size*C1_kernel_size*nb_kernels*sizeof(float);
+    
+    C1_kernel=(float *)malloc(C1_kernelBytes);
+    
+    MatrixInitRand(C1_kernel,C1_kernel_size*C1_kernel_size*nb_kernels);
+    printf("\nMatrice C1_kernel avec valeurs randoms entre 0 et 1\n");
+    MatrixPrint(C1_kernel,C1_kernel_size,C1_kernel_size,nb_kernels);
+    
+    cudaMalloc((void **)&d_C1_kernel,C1_kernelBytes);
+
+    cudaMemcpy(d_C1_kernel,C1_kernel,C1_kernelBytes,cudaMemcpyHostToDevice);
+    
+    
+    /*Matrix C1_data en sortie de gpuMatrix3DConv, avec 6 feature maps de taille 6*6*/
+    C1_data_size=28,nb_of_maps=6;
+    C1_data_Bytes=C1_data_size*C1_data_size*nb_of_maps*sizeof(float);
+    
+    C1_data=(float *)malloc(C1_data_Bytes);
+
+    cudaMalloc((void **)&d_C1_data,C1_data_Bytes);
+
+    MatrixInitZero(C1_data,C1_data_size*C1_data_size*nb_of_maps);
+    //MatrixPrint(C1_data,C1_data_size,C1_data_size,nb_of_maps);
+    
+    cudaMemcpy(d_C1_data,C1_data,C1_data_Bytes,cudaMemcpyHostToDevice);
+    
+    /*Matrix S1_data en sortie de cudaMoyen2*/
+    S1_data_size=14;
+    S1_data_Bytes=S1_data_size*S1_data_size*nb_of_maps*sizeof(float);
+    
+    S1_data=(float *)malloc(S1_data_Bytes);
+
+    cudaMalloc((void **)&d_S1_data,S1_data_Bytes);
+
+    MatrixInitZero(S1_data,S1_data_size*S1_data_size*nb_of_maps);
+    //MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
+    
+    cudaMemcpy(d_S1_data,S1_data,S1_data_Bytes,cudaMemcpyHostToDevice);
+    
+
+    
+    // -------------------- Layer 2 : Convolution 1 ----------------------------
+    
+    /* On a maximum 32*32 threads par bloc, et on a besoin de C1_data_size*C1_data_size/1024 blocs*/
+    threadsPerBlock = 32; 
+    gridCols = ceil(double(C1_data_size) / double(threadsPerBlock)); 
+    gridRows = ceil(double(C1_data_size) / double(threadsPerBlock));
+
+    dim3 gridDim2(gridCols, gridRows);
+    dim3 blockDim2(threadsPerBlock, threadsPerBlock);    // total 32x32=1024 threads
+    //gpuMatrix2DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size, C1_data_size, C1_data_size);
+    gpuMatrix3DConv << < gridDim2, blockDim2 >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size,nb_kernels, C1_data_size, C1_data_size);
+    
+    // ------------------ Layer 3 : Sous-échantillonage 1 ----------------------
+    
+    dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,3,1)
+    
+    /* Calcul de la matrice S1_data sans tanh. Pour l'avoir avec tanh, 
+    *  décommenter la ligne du dessous avec cudaMoyen2.
+    */
+    //cudaMoyen2_sans_tanh<<<my_blocks2,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    
+    // On obtient surtout des 1 ! C'est parce que la plupart des valeurs sont au-dessus de 1, et
+    // la fonction tanh vient les saturer toutes à 1.
+    
+    // ----------------------Retour au CPU--------------------------------------
+    
+    // Récupération des données sur le CPU
+    cudaMemcpy(C1_data, d_C1_data, C1_data_Bytes, cudaMemcpyDeviceToHost); // C1_data
+    cudaMemcpy(S1_data, d_S1_data, S1_data_Bytes, cudaMemcpyDeviceToHost); // S1_data
+    
+    // Affichage de C1_data et S1_data 
+    printf("\nConvolution\n");
+    MatrixPrint(C1_data,C1_data_size,C1_data_size,nb_of_maps);
+
+    printf("\nSous-échantillonage\n");
+    MatrixPrint(S1_data,S1_data_size,S1_data_size,nb_of_maps);
+
+    // Libération des ressources 
+    cudaFree(d_raw_data);
+    cudaFree(d_C1_kernel);
+    cudaFree(d_C1_data);
+    
+    free(raw_data);
+    free(C1_kernel);
+    free(C1_data);
+    
+    // This call waits for all of the submitted GPU work to complete
+    cudaDeviceSynchronize();
+    
+    
+    
     
     return 0;
 
