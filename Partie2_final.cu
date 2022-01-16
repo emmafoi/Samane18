@@ -71,12 +71,15 @@ void MatrixInitZero(float *M,int size)
 }
 
 /* MatrixInitRand : Initialise chaque valeur M[i] d'un tableau M par une valeur random entre 0 et 1
-*    L'élément M[i] prend la valeur ETC (A REMPLIR : expliquer la subitlité avec la fonction rand,, (float)
-*    et pourquoi on fait %1000 et /1000
+*   L'appel à la fonction rand renvoit un nombre entier positif choisi aléatoirement.
+*   En ajoutant %1000, on obtient le reste de sa division euclidienne par 1000, soit un entier
+*   positif aléatoirement compris entre 0 et 999.
+*   L'élément M[i] étant le nombre flottant résultant de la division du nombre précédent par 1000,
+*   il correspond donc à un nombre flottant aléatoirement compris entre 0 et 1 avec une précision de 10⁻3.
+*   Si on avait voulu une précision de 10⁻4, on aurait remplacé les 10³ par des 10⁴.
 */
 void MatrixInitRand(float *M, int size){
     for (int i = 0; i<size; i++){
-        // Flottant entre 0 et 1 de précision 10⁻3
         M[i] = (float)(rand()%1000)/1000 ; 
     }
 }
