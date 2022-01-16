@@ -3,11 +3,12 @@
 /* L'objectif de cette deuxième partie est d'implémenter un petit réseau convolutionnel qui va 
 *  convoluer une image d'entrée raw_data de taille 32*32 par un une série de 6 kernels de taille 5*5
 *  stockés dans la matrice C1_kernels. Nous obtenons en sortie de cette couche 6 feature maps 
-*  de taille 28*28 (la taille 28 résultant de l'opération (32 - 5 + 1)), qui nous donnent la matrice 
-*  C1_data. La deuxième couche est une étape de sous-échantillonage par 2 qui va, sur chaque feature map,
+*  de taille 28*28 (la taille 28 résultant de l'opération (32 - 5 + 1)), auxquelles nous appliquons 
+*  à chaque pixels de ces matrices la fonction d'activation tanh (qui ramène les valeurs entre 0 et 1)
+*  qui nous donnent la matrice C1_data. 
+*  La deuxième couche est une étape de sous-échantillonage par 2 qui va, sur chaque feature map,
 *  moyenner chaque carré de pixels de taille de 2*2. Cela nous donne 6 matrices de taille 14*14, la 
-*  taille des feature maps étant divisée par deux, et nous appliquons à chaque pixels de ces matrices
-*  la fonction d'activation tanh (qui ramène les valeurs entre -1 et 1) et nous stockons les 6 matrices
+*  taille des feature maps étant divisée par deux, et nous stockons les 6 matrices
 *  14*14 dans la matrice S1_data.
 *
 *  Nous allons effectuer plusieurs tests pour montrer que notre code marche bien, en montrant les 
@@ -96,7 +97,7 @@ void MatrixInitRand(float *M, int size){
 */
 void MatrixPrint(float *M,const int nx,const int ny,const int nz)
 {
-    printf("\n Matrix: (%d*%d*%d) \n",nx,ny,nz);
+    printf("\nMatrix: (%d*%d*%d) \n",nx,ny,nz);
     for(int k=0;k<nz;k++){                                
         for(int i=0;i<ny;i++){                            
             for(int j=0;j<nx;j++){
@@ -169,16 +170,60 @@ __global__ void gpuMatrix2DConv(float* Entree, float* Kernel, float* Sortie, int
     }
 }
 
+/* activation_tanh : Fonction qui applique la fonction tanh à une valeur m 
+*    C'est une fonction déclarée __device__ qui est exécutée par le device (GPU) et appelée par le device (GPU).
+*    Elle doit être appellée dans un kernel et ne nécessite d'appel <<<B,T>>> comme les fonctions __global__
+*    On l'appelle à la fin de la fonction gpuMatrix3DConv 
+*/
+
+__device__ float activation_tanh(float m){
+    return tanhf(m);
+}
+
+
 /* gpuMatrix3DConv : Fonction qui réalise la convolution d'une matrice avec nb_kernels kernels, et donne en sortie nb_kernels 
 *  feature maps dans la matrice de sortie. La matrice S sera de taille Sx*Sy*nb_kernels
 *
 *    Paramètres identiques à gpuMatrix2DConv, avec nb_kernels en plus : nombre de kernels avec lesquels on veut convoluer E 
 *
 *    On part de la fonction de convolution 2D pour construire la convolution 3D : à chaque thread, on calcule la valeur du pixel 
-*    (i,j) de CHAQUE feature map. Un thread réalise donc nb_kernels convolutions avec un carré kernel_size*kernel_size de l'image E
+*    (i,j) de CHAQUE feature map. Un thread réalise donc nb_kernels convolutions avec un carré kernel_size*kernel_size de l'image .
+*    On applique à chaque somme la fonction d'activation tanh.
 */
 
 __global__ void gpuMatrix3DConv(float* Entree, float* Kernel, float* Sortie, int Ex, int Ey, int kernel_size, int nb_kernels, int Sx, int Sy){
+    
+    //Identifiants globaux ligne (row) et colonne (col) du thread actuel
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (row < Sx && col < Sy) {
+        
+        // On itère l'opération de convolution d'un carré kernel_size*kernel_size de la matrice d'entrée E sur chacun des nb_kernels kernels 
+        for(int num_kernel = 0; num_kernel<nb_kernels; num_kernel++){
+            
+            // L'offset ici correpond au numéro de kernel de la matrice Kernel avec lequel on fait une opération de convolution sur E
+            int offset = num_kernel*kernel_size*kernel_size;
+            
+            //On initialise la somme qui donnera la valeur finale du pixel (row,col) du feature map n° num_kernel de la matrice Sortie
+            float sum = 0.0;
+            
+            for (int maskRow = 0; maskRow < kernel_size; maskRow++) {
+                for (int maskCol = 0; maskCol < kernel_size; maskCol++) {
+                    sum += Entree[(row + maskRow) * Ey + (col + maskCol) ] * Kernel[maskRow * kernel_size + maskCol + offset];
+                }
+            }
+            Sortie[num_kernel*(Sx*Sy) + row * Sy + col] = activation_tanh(sum);
+        
+        }
+    }
+    
+}
+
+/* gpuMatrix3DConv_sans_tanh : fonction gpuMatrix3DConv sans la fonction tanh
+*/
+
+__global__ void gpuMatrix3DConv_sans_tanh(float* Entree, float* Kernel, float* Sortie, int Ex, int Ey, int kernel_size, int nb_kernels, int Sx, int Sy){
     
     //Identifiants globaux ligne (row) et colonne (col) du thread actuel
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -207,58 +252,8 @@ __global__ void gpuMatrix3DConv(float* Entree, float* Kernel, float* Sortie, int
     
 }
 
-/* activation_tanh : Fonction qui applique la fonction tanh à une valeur m 
-*    C'est une fonction déclarée __device__ qui est exécutée par le device (GPU) et appelée par le device (GPU).
-*    Elle doit être appellée dans un kernel et ne nécessite d'appel <<<B,T>>> comme les fonctions __global__
-*    On l'appelle à la fin de la fonction cudaMoyen2 
-*/
 
-__device__ float activation_tanh(float m){
-    return tanhf(m);
-}
-
-
-/* cudaMoyen2_sans_tanh : fonction moyenneur sans utilisation de la fonction tanh, executée sur GPU
-*
-*    n : taille d'une ligne (et aussi d'une colonne) de la matrice d'entrée E (qui est carrée)
-*
-*    L'argument de la fonction correspond à la dimension de la matrice d'entrée
-*    Les nombres de blocks et threads sont ceux de la matrice d'arrivés car le nombre de calculs corespond au nombre 
-*    d'éléments à l'arrivée
-*/
-
-__global__ void cudaMoyen2_sans_tanh(float *E, float *S, int n){
-    
-    // n_out : dimension de la matrice de sortie
-    int n_out = n/2; 
-    
-    //1er élément du 1er dim3 = nombre matrices 2D de E
-    int nb_mat = blockIdx.x;
-    
-    //nb_mat * taille d'une matrice de S (= taille du shift dans l'indice de S):
-    int shift_S = nb_mat * n_out * n_out ;
-    
-    //nb_mat * taille d'une matrice de E (= taille du shift dans l'indice de E):
-    int shift_E = nb_mat * n * n ;
-    
-    //2e élément du 1er dim3 = nombre de colonnes/2 de E = nombre de col de S
-    int output_col = blockIdx.y; 
-    
-    //2e dim3 (contient 1 seul élément) = nombre de lignes/2 de E =  nombre de lignes de S
-    int output_row = threadIdx.x;
-    
-    //on se déplace de 2 en 2 dans les matrices d'entrée
-    int input_col = 2 * output_col;
-    int input_row = 2 * output_row;
-    
-    //Calcul pour chaque élément de S la moyenne en fonction des éléments de E :
-    S[shift_S + output_row * n_out + output_col] = (float)(( E[shift_E + input_row * n + input_col] 
-    + E[shift_E + (input_row+1) * n + input_col] + E[shift_E + input_row * n + (input_col+1)] + 
-    E[shift_E + (input_row+1) * n + (input_col+1)] )/4);
-    
-}
-
-/* cudaMoyen2 : fonction moyenneur sans utilisation de la fonction tanh, executée sur GPU
+/* cudaMoyen2: fonction moyenneur, executée sur GPU
 *
 *    n : taille d'une ligne (et aussi d'une colonne) de la matrice d'entrée E (qui est carrée)
 *
@@ -292,11 +287,12 @@ __global__ void cudaMoyen2(float *E, float *S, int n){
     int input_row = 2 * output_row;
     
     //Calcul pour chaque élément de S la moyenne en fonction des éléments de E :
-    S[shift_S + output_row * n_out + output_col] = activation_tanh((float)(( E[shift_E + input_row * n + input_col] 
+    S[shift_S + output_row * n_out + output_col] = (float)(( E[shift_E + input_row * n + input_col] 
     + E[shift_E + (input_row+1) * n + input_col] + E[shift_E + input_row * n + (input_col+1)] + 
-    E[shift_E + (input_row+1) * n + (input_col+1)] )/4));
+    E[shift_E + (input_row+1) * n + (input_col+1)] )/4);
     
 }
+
 
 // ********************************************* Main ***************************************************** 
 
@@ -408,17 +404,16 @@ int main()
     dim3 gridDim(gridCols, gridRows);
     dim3 blockDim(threadsPerBlock, threadsPerBlock);    // total 32x32=1024 threads
     //gpuMatrix2DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size, C1_data_size, C1_data_size);
-    gpuMatrix3DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size,nb_kernels, C1_data_size, C1_data_size);
+    
+    // Calcul de la convolution, ici sans tanh. Décommenter la ligne du dessous pour l'avoir avec tanh
+    
+    gpuMatrix3DConv_sans_tanh << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size,nb_kernels, C1_data_size, C1_data_size);
+    // gpuMatrix3DConv << < gridDim, blockDim >> > (d_raw_data, d_C1_kernel, d_C1_data, raw_size, raw_size, C1_kernel_size,nb_kernels, C1_data_size, C1_data_size);
     
     // ------------------ Layer 3 : Sous-échantillonage 1 ----------------------
     
     dim3 my_blocks (nb_of_maps, S1_data_size, 1); // = (6,3,1)
-    
-    /* Calcul de la matrice S1_data sans tanh. Pour l'avoir avec tanh, 
-    *  décommenter la ligne du dessous avec cudaMoyen2.
-    */
-    cudaMoyen2_sans_tanh<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
-    //cudaMoyen2<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    cudaMoyen2<<<my_blocks,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
     
     
     // ----------------------Retour au CPU--------------------------------------
@@ -540,14 +535,11 @@ int main()
     
     dim3 my_blocks2(nb_of_maps, S1_data_size, 1); // = (6,3,1)
     
-    /* Calcul de la matrice S1_data sans tanh. Pour l'avoir avec tanh, 
-    *  décommenter la ligne du dessous avec cudaMoyen2.
-    */
-    //cudaMoyen2_sans_tanh<<<my_blocks2,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
+    /* Calcul de la matrice S1_data */
     cudaMoyen2<<<my_blocks2,S1_data_size>>>(d_C1_data,d_S1_data, C1_data_size);
     
-    // On obtient surtout des 1 ! C'est parce que la plupart des valeurs sont au-dessus de 1, et
-    // la fonction tanh vient les saturer toutes à 1.
+    // On n'obtient que des 1 ! C'est parce que la plupart des valeurs en sortie de la convolution 
+    //sont au-dessus de 1, et la fonction tanh vient les saturer toutes à 1.
     
     // ----------------------Retour au CPU--------------------------------------
     
